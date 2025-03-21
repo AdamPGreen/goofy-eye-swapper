@@ -3,50 +3,28 @@ import * as faceapi from 'face-api.js';
 
 // Constants for model paths
 const LOCAL_MODEL_URL = '/models';
-const CDN_MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
+// Updated CDN URL to a more reliable source
+const CDN_MODEL_URL = 'https://raw.githubusercontent.com/justadudewhohacks/face-api.js/master/weights';
 
 /**
- * Creates the models directory structure if it doesn't exist
- * This is a client-side function that checks for model availability
- */
-const ensureModelsDirectory = async (): Promise<void> => {
-  console.log("Checking for models directory...");
-  
-  try {
-    // Try to fetch a test file to check if the models directory exists
-    const response = await fetch(`${LOCAL_MODEL_URL}/tiny_face_detector_model-weights_manifest.json`, { method: 'HEAD' });
-    if (!response.ok) {
-      console.log("Models directory check failed, will use CDN models");
-    } else {
-      console.log("Models directory exists");
-    }
-  } catch (error) {
-    console.log("Models directory check failed with error, will use CDN models", error);
-  }
-};
-
-/**
- * Loads the face detection models with improved fallback logic.
- * Attempts to load from CDN if local loading fails.
+ * Loads the face detection models with reliable CDN fallback
  */
 export const loadModels = async (): Promise<boolean> => {
   try {
     console.log("Loading face detection models...");
     
-    // First check if local models directory exists
-    await ensureModelsDirectory();
-    
-    // Load SSD Mobilenet model - it provides more reliable face detection than TinyFaceDetector
     try {
       // Try loading from local path first
+      console.log("Attempting to load models from local path:", LOCAL_MODEL_URL);
       await faceapi.nets.ssdMobilenetv1.loadFromUri(LOCAL_MODEL_URL);
       await faceapi.nets.faceLandmark68Net.loadFromUri(LOCAL_MODEL_URL);
       console.log("Successfully loaded models from local path");
       return true;
     } catch (localError) {
-      console.warn("Failed to load models from local path, trying CDN fallback...", localError);
+      console.warn("Failed to load models from local path, using CDN fallback:", localError);
       
       // Fallback to CDN
+      console.log("Attempting to load models from CDN:", CDN_MODEL_URL);
       await faceapi.nets.ssdMobilenetv1.loadFromUri(CDN_MODEL_URL);
       await faceapi.nets.faceLandmark68Net.loadFromUri(CDN_MODEL_URL);
       console.log("Successfully loaded models from CDN");
@@ -61,12 +39,13 @@ export const loadModels = async (): Promise<boolean> => {
 // Detect faces and landmarks in an image
 export const detectFaces = async (image: HTMLImageElement) => {
   try {
-    // Use SSD Mobilenet model for detection instead of TinyFaceDetector
+    // Use SSD Mobilenet model for detection
     const detections = await faceapi.detectAllFaces(
       image,
       new faceapi.SsdMobilenetv1Options()
     ).withFaceLandmarks();
     
+    console.log("Face detection completed, found:", detections.length, "faces");
     return detections;
   } catch (error) {
     console.error("Error detecting faces:", error);
@@ -97,7 +76,7 @@ export const getEyePositions = (detections: faceapi.WithFaceLandmarks<{ detectio
     };
     
     // Expand the eye boxes slightly for better coverage
-    const expandFactor = 1.5;
+    const expandFactor = 1.7; // Increased to cover more eye area
     
     leftEyeBox.x -= (leftEyeBox.width * (expandFactor - 1)) / 2;
     leftEyeBox.y -= (leftEyeBox.height * (expandFactor - 1)) / 2;
@@ -109,6 +88,7 @@ export const getEyePositions = (detections: faceapi.WithFaceLandmarks<{ detectio
     rightEyeBox.width *= expandFactor;
     rightEyeBox.height *= expandFactor;
     
+    console.log("Eye positions calculated:", { leftEye: leftEyeBox, rightEye: rightEyeBox });
     return {
       leftEye: leftEyeBox,
       rightEye: rightEyeBox
