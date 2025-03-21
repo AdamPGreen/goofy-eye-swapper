@@ -1,18 +1,33 @@
-
 import * as faceapi from 'face-api.js';
 
 // Initialize models path
 const MODEL_URL = '/models';
 
-// Load all required face-api.js models
-export const loadModels = async () => {
+/**
+ * Loads the face detection models.
+ * Attempts to load from CDN if local loading fails.
+ */
+export const loadModels = async (): Promise<boolean> => {
   try {
-    await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-    await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);
-    console.log("Face detection models loaded successfully");
-    return true;
+    console.log("Loading models...");
+    
+    // First try to load from local models directory
+    try {
+      await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
+      await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
+      console.log("Successfully loaded models from local path");
+      return true;
+    } catch (localError) {
+      console.warn("Failed to load models locally, trying CDN fallback...", localError);
+      
+      // Fallback to CDN if local loading fails
+      await faceapi.nets.tinyFaceDetector.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
+      await faceapi.nets.faceLandmark68Net.loadFromUri('https://justadudewhohacks.github.io/face-api.js/models');
+      console.log("Successfully loaded models from CDN");
+      return true;
+    }
   } catch (error) {
-    console.error("Error loading face detection models:", error);
+    console.error("Failed to load models:", error);
     return false;
   }
 };

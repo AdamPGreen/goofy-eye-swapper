@@ -1,8 +1,9 @@
 
 import { useState, useEffect } from "react";
-import { BarChart, BookOpen, Image as ImageIcon } from "lucide-react";
+import { BarChart, BookOpen, Image as ImageIcon, EyeOff } from "lucide-react";
 import { loadModels } from "../utils/faceDetection";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import ImageUploader from "../components/ImageUploader";
@@ -10,14 +11,17 @@ import EyeStyleSelector, { EyeStyle, eyeStyles } from "../components/EyeStyleSel
 import EyeSwapper from "../components/EyeSwapper";
 
 const Index = () => {
+  const { user } = useAuth();
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const [sourceImage, setSourceImage] = useState<HTMLImageElement | null>(null);
   const [selectedEyeStyle, setSelectedEyeStyle] = useState<EyeStyle>(eyeStyles[0]);
+  const [isModelLoading, setIsModelLoading] = useState(true);
   
   // Load face detection models on mount
   useEffect(() => {
     const initModels = async () => {
       try {
+        setIsModelLoading(true);
         // Create models directory structure in public folder
         const result = await loadModels();
         if (result) {
@@ -29,6 +33,8 @@ const Index = () => {
       } catch (error) {
         console.error("Error initializing models:", error);
         toast.error("Failed to initialize. Please refresh the page.");
+      } finally {
+        setIsModelLoading(false);
       }
     };
     
@@ -61,6 +67,21 @@ const Index = () => {
               <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
                 Upload any photo and instantly replace the eyes with fun alternatives. Choose from googly eyes, anime eyes, and more!
               </p>
+              {!isModelLoading && !modelsLoaded && (
+                <div className="p-4 bg-destructive/10 rounded-lg text-destructive mb-6 max-w-lg mx-auto">
+                  <p className="font-medium">Face detection models failed to load</p>
+                  <p className="text-sm mt-1">Please try refreshing the page or check your internet connection.</p>
+                </div>
+              )}
+              {user ? (
+                <p className="text-sm text-muted-foreground">
+                  You're signed in! Your eye swaps will be saved to your account.
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  <a href="/auth" className="text-primary underline">Sign in</a> to save your eye swaps.
+                </p>
+              )}
             </div>
           </div>
         </section>
@@ -78,10 +99,38 @@ const Index = () => {
               {/* Eye Style Selector */}
               <div className={`glass-panel rounded-2xl p-6 md:p-8 transition-opacity duration-300 ${sourceImage ? 'opacity-100' : 'opacity-50'}`}>
                 <h2 className="text-2xl font-semibold mb-6 text-center">Select Eye Style</h2>
-                <EyeStyleSelector 
-                  onSelectStyle={handleSelectEyeStyle} 
-                  disabled={!sourceImage}
-                />
+                <div className="flex flex-col items-center">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-6">
+                    {eyeStyles.map(style => (
+                      <div 
+                        key={style.id}
+                        className={`relative cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${
+                          selectedEyeStyle.id === style.id 
+                            ? 'border-primary scale-105 shadow-md' 
+                            : 'border-transparent hover:border-muted-foreground'
+                        }`}
+                        onClick={() => !sourceImage || handleSelectEyeStyle(style)}
+                      >
+                        <img 
+                          src={`/eyes/${style.id}-preview.png`}
+                          alt={style.name}
+                          className="w-full aspect-square object-cover"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.onerror = null;
+                            target.src = "/placeholder.svg";
+                          }}
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/50 text-white p-2 text-center text-xs font-medium">
+                          {style.name}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-sm text-muted-foreground italic">
+                    {!sourceImage ? "Upload an image first to select an eye style" : "Click on a style to select it"}
+                  </p>
+                </div>
               </div>
               
               {/* Result Section */}
@@ -118,7 +167,7 @@ const Index = () => {
               {/* Feature 2 */}
               <div className="bg-white rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
                 <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-                  <BookOpen className="text-primary" size={24} />
+                  <EyeOff className="text-primary" size={24} />
                 </div>
                 <h3 className="text-xl font-semibold mb-2">Multiple Eye Styles</h3>
                 <p className="text-muted-foreground">
@@ -153,7 +202,7 @@ const Index = () => {
               <p className="text-muted-foreground">
                 The application uses advanced facial recognition technology to accurately 
                 detect and replace eyes in any photo. All processing happens directly in your browser, 
-                so your photos are never uploaded to any server.
+                so your photos are never uploaded to any server unless you choose to save them.
               </p>
             </div>
           </div>
