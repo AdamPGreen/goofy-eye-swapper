@@ -36,9 +36,10 @@ export const loadModels = async (): Promise<boolean> => {
     // First check if local models directory exists
     await ensureModelsDirectory();
     
-    // Try loading from local path first
+    // Load SSD Mobilenet model - it provides more reliable face detection than TinyFaceDetector
     try {
-      await faceapi.nets.tinyFaceDetector.loadFromUri(LOCAL_MODEL_URL);
+      // Try loading from local path first
+      await faceapi.nets.ssdMobilenetv1.loadFromUri(LOCAL_MODEL_URL);
       await faceapi.nets.faceLandmark68Net.loadFromUri(LOCAL_MODEL_URL);
       console.log("Successfully loaded models from local path");
       return true;
@@ -46,7 +47,7 @@ export const loadModels = async (): Promise<boolean> => {
       console.warn("Failed to load models from local path, trying CDN fallback...", localError);
       
       // Fallback to CDN
-      await faceapi.nets.tinyFaceDetector.loadFromUri(CDN_MODEL_URL);
+      await faceapi.nets.ssdMobilenetv1.loadFromUri(CDN_MODEL_URL);
       await faceapi.nets.faceLandmark68Net.loadFromUri(CDN_MODEL_URL);
       console.log("Successfully loaded models from CDN");
       return true;
@@ -60,9 +61,10 @@ export const loadModels = async (): Promise<boolean> => {
 // Detect faces and landmarks in an image
 export const detectFaces = async (image: HTMLImageElement) => {
   try {
+    // Use SSD Mobilenet model for detection instead of TinyFaceDetector
     const detections = await faceapi.detectAllFaces(
-      image, 
-      new faceapi.TinyFaceDetectorOptions()
+      image,
+      new faceapi.SsdMobilenetv1Options()
     ).withFaceLandmarks();
     
     return detections;

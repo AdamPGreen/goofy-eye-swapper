@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Loader2, Save, Share, Download } from "lucide-react";
 import { EyeStyle } from './EyeStyleSelector';
+import { detectFaces, getEyePositions } from '@/utils/faceDetection';
 
 interface EyeSwapperProps {
   sourceImage: HTMLImageElement;
@@ -26,11 +27,13 @@ const EyeSwapper = ({ sourceImage, selectedEyeStyle }: EyeSwapperProps) => {
   const [title, setTitle] = useState("");
   const [saving, setSaving] = useState(false);
   const [processedImageUrl, setProcessedImageUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const detectFaces = async () => {
+    const detectFacesInImage = async () => {
       try {
         setProcessing(true);
+        setError(null);
         
         if (!canvasRef.current) return;
         
@@ -38,15 +41,22 @@ const EyeSwapper = ({ sourceImage, selectedEyeStyle }: EyeSwapperProps) => {
         const displaySize = { width: sourceImage.width, height: sourceImage.height };
         faceapi.matchDimensions(canvas, displaySize);
         
-        const detections = await faceapi.detectAllFaces(sourceImage)
-          .withFaceLandmarks();
-          
-        const resizedDetections = faceapi.resizeResults(detections, displaySize);
-        setFaces(resizedDetections);
+        console.log("Starting face detection...");
+        const detections = await detectFaces(sourceImage);
+        console.log("Face detection completed, found:", detections.length);
         
-        drawResult();
+        if (detections.length === 0) {
+          setError("No faces detected in the image");
+        } else {
+          const resizedDetections = faceapi.resizeResults(detections, displaySize);
+          setFaces(resizedDetections);
+        }
+        
+        // Proceed with drawing the result even if no faces are detected
+        // This will at least show the original image
       } catch (error) {
         console.error('Error detecting faces:', error);
+        setError("Failed to detect faces. Please try another image.");
         toast.error('Failed to detect faces in the image');
       } finally {
         setProcessing(false);
@@ -54,31 +64,37 @@ const EyeSwapper = ({ sourceImage, selectedEyeStyle }: EyeSwapperProps) => {
     };
     
     if (sourceImage) {
-      detectFaces();
+      detectFacesInImage();
     }
   }, [sourceImage]);
   
   useEffect(() => {
-    if (faces.length > 0) {
+    if (sourceImage) {
       drawResult();
     }
-  }, [faces, selectedEyeStyle]);
+  }, [faces, selectedEyeStyle, sourceImage]);
   
   const drawResult = async () => {
-    if (!resultCanvasRef.current || faces.length === 0) return;
+    if (!resultCanvasRef.current || !sourceImage) return;
     
     const canvas = resultCanvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     
-    // Set canvas dimensions to match source image
-    canvas.width = sourceImage.width;
-    canvas.height = sourceImage.height;
-    
-    // Draw the original image
-    ctx.drawImage(sourceImage, 0, 0, canvas.width, canvas.height);
-    
     try {
+      // Set canvas dimensions to match source image
+      canvas.width = sourceImage.width;
+      canvas.height = sourceImage.height;
+      
+      // Draw the original image
+      ctx.drawImage(sourceImage, 0, 0, canvas.width, canvas.height);
+      
+      // If no faces detected, just show the original image
+      if (faces.length === 0) {
+        setProcessedImageUrl(canvas.toDataURL('image/png'));
+        return;
+      }
+      
       // Load the eye images
       const leftEyeImg = new Image();
       const rightEyeImg = new Image();
@@ -89,46 +105,54 @@ const EyeSwapper = ({ sourceImage, selectedEyeStyle }: EyeSwapperProps) => {
       await Promise.all([
         new Promise<void>((resolve, reject) => {
           leftEyeImg.onload = () => resolve();
-          leftEyeImg.onerror = () => reject(new Error(`Failed to load left eye image: ${leftEyeImg.src}`));
+          leftEyeImg.onerror = (e) => {
+            console.error(`Failed to load left eye image: ${leftEyeImg.src}`, e);
+            reject(new Error(`Failed to load left eye image: ${leftEyeImg.src}`));
+          };
         }),
         new Promise<void>((resolve, reject) => {
           rightEyeImg.onload = () => resolve();
-          rightEyeImg.onerror = () => reject(new Error(`Failed to load right eye image: ${rightEyeImg.src}`));
+          rightEyeImg.onerror = (e) => {
+            console.error(`Failed to load right eye image: ${rightEyeImg.src}`, e);
+            reject(new Error(`Failed to load right eye image: ${rightEyeImg.src}`));
+          };
         })
       ]);
       
-      // Process each detected face
-      faces.forEach(face => {
-        const landmarks = face.landmarks;
-        const leftEye = landmarks.getLeftEye();
-        const rightEye = landmarks.getRightEye();
+      console.log("Eye images loaded, applying to faces:", faces.length);
+      
+      // Get eye positions from facial landmarks
+      const eyePositions = getEyePositions(faces);
+      
+      // Apply eye images to each detected face
+      eyePositions.forEach(position => {
+        const { leftEye, rightEye } = position;
         
-        // Calculate eye dimensions and positions
-        const leftEyeRect = calculateEyeRect(leftEye);
-        const rightEyeRect = calculateEyeRect(rightEye);
-        
-        // Apply eye images
+        // Draw left eye
         ctx.drawImage(
           leftEyeImg, 
-          leftEyeRect.x, 
-          leftEyeRect.y, 
-          leftEyeRect.width, 
-          leftEyeRect.height
+          leftEye.x, 
+          leftEye.y, 
+          leftEye.width, 
+          leftEye.height
         );
         
+        // Draw right eye
         ctx.drawImage(
           rightEyeImg, 
-          rightEyeRect.x, 
-          rightEyeRect.y, 
-          rightEyeRect.width, 
-          rightEyeRect.height
+          rightEye.x, 
+          rightEye.y, 
+          rightEye.width, 
+          rightEye.height
         );
       });
       
       // Store the processed image URL
       setProcessedImageUrl(canvas.toDataURL('image/png'));
+      console.log("Processed image created successfully");
     } catch (error) {
       console.error('Error applying eye style:', error);
+      setError("Failed to apply eye style");
       toast.error('Failed to apply eye style. Please try again.');
     }
   };
@@ -274,14 +298,21 @@ const EyeSwapper = ({ sourceImage, selectedEyeStyle }: EyeSwapperProps) => {
         />
       </div>
       
-      {!processing && faces.length === 0 && (
+      {!processing && error && (
+        <div className="text-center mb-6 p-4 bg-destructive/10 rounded-lg">
+          <p className="text-destructive font-medium">{error}</p>
+          <p className="text-sm text-muted-foreground mt-1">Please try uploading a different image with clearly visible faces.</p>
+        </div>
+      )}
+      
+      {!processing && faces.length === 0 && !error && (
         <div className="text-center mb-6 p-4 bg-destructive/10 rounded-lg">
           <p className="text-destructive font-medium">No faces detected in the image.</p>
           <p className="text-sm text-muted-foreground mt-1">Please try uploading a different image with clearly visible faces.</p>
         </div>
       )}
       
-      {!processing && faces.length > 0 && (
+      {!processing && (faces.length > 0 || processedImageUrl) && (
         <div className="flex flex-wrap justify-center gap-4 mt-4">
           <Button
             onClick={handleSave}
